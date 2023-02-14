@@ -2,7 +2,10 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const unzipper = require("unzipper");
+const AdmZip = require("adm-zip");
 const { stdout } = require("process");
+const tar = require("tar-fs");
+const zlib = require("zlib");
 
 const ARCH_MAPPING = {
   ia32: "386",
@@ -39,6 +42,28 @@ async function getCurrentRelease() {
   return res.data;
 }
 
+async function extractFile(path) {
+  return new Promise(async (resolve, reject) => {
+    if (path.endsWith(".zip")) {
+      let extract = unzipper.Extract({ path: "./bin" });
+      extract.on("end", () => {
+        resolve(true);
+      });
+      
+      fs.createReadStream(path).pipe(extract);
+    } else if (path.endsWith(".tar.gz")) {
+      let extract = tar.extract("./bin");
+      extract.on("end", () => {
+        resolve(true);
+      });
+
+      fs.createReadStream(path).pipe(zlib.createGunzip()).pipe(extract);
+    }
+
+    resolve(false);
+  });
+}
+
 async function installBinaries() {
   if (!PLATFORM) throw UNSUPPORTED_PLATFORM;
   if (!ARCH) throw UNSUPPORTED_ARCH;
@@ -55,9 +80,17 @@ async function installBinaries() {
       responseType: "stream",
     });
 
-    res.data.pipe(unzipper.Extract({ path: path.join("./bin") }));
+    let filepath = path.resolve(__dirname, "./bin", asset.name);
+    let stream = fs.createWriteStream(filepath);
+    stream.on("close", () => {
+      extractFile(filepath).then(() => {
+        fs.unlinkSync(filepath)
+      });
+    });
+
+    res.data.pipe(stream);
   } catch (err) {
-    console.log("error ao salvar arquivo", err);
+    console.log("Error when trying to download and extract the file", err);
   }
 }
 

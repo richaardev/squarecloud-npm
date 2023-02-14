@@ -2,3 +2,5 @@ node_modules/
 
 *.exe
 *.exe~
+*.zip
+*.tar.gz
